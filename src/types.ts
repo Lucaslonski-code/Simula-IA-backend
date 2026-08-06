@@ -37,6 +37,8 @@ export interface QuizPublic {
   estimatedTimeMinutes: number;
   difficulty: QuizDifficulty;
   topics: string[];
+  /** Valor cifrado e opaco, usado apenas para solicitar a correção. */
+  correctionToken: string;
   questions: Array<{
     id: string;
     question: string;

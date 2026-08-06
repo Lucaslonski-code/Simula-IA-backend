@@ -4,7 +4,9 @@ import { extractTextFromFile, UnsupportedFileTypeError, TextExtractionError } fr
 import {
   createQuiz,
   correctQuiz,
+  InvalidQuizSubmissionError,
   QuizNotFoundError,
+  QuizTooLargeError,
   QUESTION_COUNT_MIN,
   QUESTION_COUNT_MAX
 } from "../services/quizService.js";
@@ -50,9 +52,9 @@ quizRouter.post("/generate", upload.single("file"), async (req, res) => {
     const pastedText = typeof req.body.text === "string" ? req.body.text.trim() : "";
     const file = req.file;
 
-    if (!file && !pastedText) {
+    if ((!file && !pastedText) || (file && pastedText)) {
       return res.status(400).json({
-        error: "Envie um arquivo (PDF, DOCX ou TXT) ou cole um texto para gerar o simulado."
+        error: "Envie exatamente um arquivo (PDF, DOCX ou TXT) ou um texto colado para gerar o simulado."
       });
     }
 
@@ -75,21 +77,22 @@ quizRouter.post("/generate", upload.single("file"), async (req, res) => {
 
 /**
  * POST /api/quiz/:id/submit
- * body: { answers: Record<questionId, optionIndex> }
+ * body: { answers: Record<questionId, optionIndex>, correctionToken: string }
  *
- * Corrige o simulado usando o gabarito mantido pelo backend e retorna
- * o resultado final. Nenhuma nova chamada ao Gemini é necessária.
+ * Corrige o simulado usando o gabarito cifrado pelo backend e retorna o
+ * resultado final. Nenhuma nova chamada ao Gemini é necessária.
  */
 quizRouter.post("/:id/submit", (req, res) => {
   try {
     const { id } = req.params;
     const answers = req.body?.answers;
+    const correctionToken = req.body?.correctionToken;
 
     if (!answers || typeof answers !== "object") {
       return res.status(400).json({ error: "As respostas enviadas são inválidas." });
     }
 
-    const result = correctQuiz(id, answers);
+    const result = correctQuiz(id, answers, correctionToken);
     return res.json(result);
   } catch (err) {
     return handleQuizError(err, res);
@@ -99,6 +102,12 @@ quizRouter.post("/:id/submit", (req, res) => {
 function handleQuizError(err: unknown, res: import("express").Response) {
   if (err instanceof QuizNotFoundError) {
     return res.status(404).json({ error: err.message });
+  }
+  if (err instanceof InvalidQuizSubmissionError) {
+    return res.status(400).json({ error: err.message });
+  }
+  if (err instanceof QuizTooLargeError) {
+    return res.status(422).json({ error: err.message });
   }
   if (err instanceof UnsupportedFileTypeError) {
     return res.status(415).json({ error: err.message });

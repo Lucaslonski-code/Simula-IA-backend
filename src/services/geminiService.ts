@@ -14,7 +14,9 @@ import type { QuizDifficulty, QuizInternal } from "../types.js";
 const MODEL_NAME = "gemini-3.6-flash";
 
 const MIN_CONTENT_LENGTH = 50;
-const GEMINI_TIMEOUT_MS = 90_000; // 90s — geração de simulados grandes pode levar algum tempo
+// Mantém margem para serialização e resposta da Function, cujo limite no Vercel
+// é de 90 segundos neste projeto.
+const GEMINI_TIMEOUT_MS = 75_000;
 
 class TimeoutError extends Error {}
 
@@ -168,20 +170,35 @@ export async function generateQuizFromText({
 
     const parsed = JSON.parse(jsonText);
 
-    if (!Array.isArray(parsed.questions) || parsed.questions.length === 0) {
-      throw new GeminiGenerationError("A resposta do Gemini não contém questões válidas.");
+    if (!Array.isArray(parsed.questions) || parsed.questions.length !== questionCount) {
+      throw new GeminiGenerationError(
+        `A resposta do Gemini não contém exatamente as ${questionCount} questões solicitadas.`
+      );
     }
 
     const questions = parsed.questions.map((q: any, index: number) => {
       if (!Array.isArray(q.options) || q.options.length !== 4) {
         throw new GeminiGenerationError(`A questão ${index + 1} não possui exatamente 4 alternativas.`);
       }
+      if (typeof q.question !== "string" || q.question.trim().length === 0) {
+        throw new GeminiGenerationError(`A questão ${index + 1} não possui enunciado válido.`);
+      }
+      if (q.options.some((option: unknown) => typeof option !== "string" || option.trim().length === 0)) {
+        throw new GeminiGenerationError(`A questão ${index + 1} possui alternativa inválida.`);
+      }
       if (
-        typeof q.correctAnswer !== "number" ||
+        !Number.isInteger(q.correctAnswer) ||
         q.correctAnswer < 0 ||
         q.correctAnswer > 3
       ) {
         throw new GeminiGenerationError(`A questão ${index + 1} não possui um índice de resposta correta válido.`);
+      }
+
+      if (typeof q.explanation !== "string" || q.explanation.trim().length === 0) {
+        throw new GeminiGenerationError(`A questão ${index + 1} não possui explicação válida.`);
+      }
+      if (typeof q.topic !== "string" || q.topic.trim().length === 0) {
+        throw new GeminiGenerationError(`A questão ${index + 1} não possui tópico válido.`);
       }
 
       return {
@@ -189,8 +206,8 @@ export async function generateQuizFromText({
         question: String(q.question),
         options: q.options.map((opt: unknown) => String(opt)),
         correctAnswer: q.correctAnswer,
-        explanation: String(q.explanation ?? ""),
-        topic: String(q.topic ?? "Geral")
+        explanation: q.explanation.trim(),
+        topic: q.topic.trim()
       };
     });
 

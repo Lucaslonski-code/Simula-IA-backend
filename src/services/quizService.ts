@@ -4,7 +4,7 @@
  */
 
 import { generateQuizFromText } from "./geminiService.js";
-import { getQuiz, removeQuiz, saveQuiz } from "./quizCache.js";
+import { createQuizToken, readQuizToken, QuizTokenError, QuizTokenTooLargeError } from "./quizToken.js";
 import type {
   QuizDifficulty,
   QuizInternal,
@@ -19,6 +19,20 @@ export class QuizNotFoundError extends Error {
   }
 }
 
+export class InvalidQuizSubmissionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InvalidQuizSubmissionError";
+  }
+}
+
+export class QuizTooLargeError extends Error {
+  constructor() {
+    super("O simulado gerado é grande demais para ser corrigido com segurança. Tente gerar menos questões ou outro material.");
+    this.name = "QuizTooLargeError";
+  }
+}
+
 export const QUESTION_COUNT_MIN = 10;
 export const QUESTION_COUNT_MAX = 30;
 
@@ -30,6 +44,7 @@ function toPublicQuiz(quiz: QuizInternal): QuizPublic {
     estimatedTimeMinutes: quiz.estimatedTimeMinutes,
     difficulty: quiz.difficulty,
     topics: quiz.topics,
+    correctionToken: createQuizToken(quiz),
     questions: quiz.questions.map((q) => ({
       id: q.id,
       question: q.question,
@@ -45,17 +60,38 @@ export async function createQuiz(params: {
   difficulty: QuizDifficulty;
 }): Promise<QuizPublic> {
   const quiz = await generateQuizFromText(params);
-  saveQuiz(quiz);
-  return toPublicQuiz(quiz);
+  try {
+    return toPublicQuiz(quiz);
+  } catch (error) {
+    if (error instanceof QuizTokenTooLargeError) throw new QuizTooLargeError();
+    throw error;
+  }
 }
 
 export function correctQuiz(
   quizId: string,
-  userAnswers: Record<string, number>
+  userAnswers: Record<string, number>,
+  correctionToken: unknown
 ): QuizResult {
-  const quiz = getQuiz(quizId);
-  if (!quiz) {
+  let quiz: QuizInternal;
+  try {
+    quiz = readQuizToken(correctionToken);
+  } catch (error) {
+    if (error instanceof QuizTokenError) throw new QuizNotFoundError(error.message);
+    throw error;
+  }
+  if (quiz.id !== quizId) {
     throw new QuizNotFoundError(quizId);
+  }
+
+  const expectedIds = new Set(quiz.questions.map((question) => question.id));
+  if (Object.keys(userAnswers).length !== quiz.questions.length) {
+    throw new InvalidQuizSubmissionError("Responda todas as questões antes de finalizar o simulado.");
+  }
+  for (const [questionId, answer] of Object.entries(userAnswers)) {
+    if (!expectedIds.has(questionId) || !Number.isInteger(answer) || answer < 0 || answer > 3) {
+      throw new InvalidQuizSubmissionError("As respostas enviadas são inválidas.");
+    }
   }
 
   let correctCount = 0;
@@ -89,10 +125,6 @@ export function correctQuiz(
     scorePercentage: Math.round((correctCount / totalQuestions) * 100),
     questions
   };
-
-  // O simulado foi concluído: não há necessidade de mantê-lo em cache
-  // (o produto não armazena histórico de simulados).
-  removeQuiz(quizId);
 
   return result;
 }

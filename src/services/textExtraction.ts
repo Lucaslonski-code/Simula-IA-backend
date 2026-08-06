@@ -7,6 +7,8 @@
 
 import mammoth from "mammoth";
 
+const MAX_EXTRACTED_TEXT_LENGTH = 1_000_000;
+
 export class UnsupportedFileTypeError extends Error {
   constructor(mimeType: string, fileName: string) {
     super(
@@ -25,12 +27,19 @@ export class TextExtractionError extends Error {
   }
 }
 
+function ensureTextWithinLimit(text: string, fileName: string): string {
+  if (text.length > MAX_EXTRACTED_TEXT_LENGTH) {
+    throw new TextExtractionError(fileName);
+  }
+  return text;
+}
+
 async function extractFromPdf(buffer: Buffer, fileName: string): Promise<string> {
   try {
     // Import dinâmico evita que a lib tente carregar um PDF de teste no import estático.
     const pdfParse = (await import("pdf-parse")).default;
     const result = await pdfParse(buffer);
-    return result.text;
+    return ensureTextWithinLimit(result.text, fileName);
   } catch (err) {
     console.error(`Falha ao extrair texto de PDF (${fileName}):`, err);
     throw new TextExtractionError(fileName);
@@ -40,7 +49,7 @@ async function extractFromPdf(buffer: Buffer, fileName: string): Promise<string>
 async function extractFromDocx(buffer: Buffer, fileName: string): Promise<string> {
   try {
     const result = await mammoth.extractRawText({ buffer });
-    return result.value;
+    return ensureTextWithinLimit(result.value, fileName);
   } catch (err) {
     console.error(`Falha ao extrair texto de DOCX (${fileName}):`, err);
     throw new TextExtractionError(fileName);
@@ -73,7 +82,7 @@ export async function extractTextFromFile(
   }
 
   if (mimeType === "text/plain" || lowerName.endsWith(".txt")) {
-    return extractFromTxt(buffer);
+    return ensureTextWithinLimit(extractFromTxt(buffer), fileName);
   }
 
   throw new UnsupportedFileTypeError(mimeType, fileName);

@@ -1,7 +1,9 @@
 import multer from "multer";
 
-const MAX_FILE_SIZE_BYTES = 25 * 1024 * 1024; // 25MB
-const MAX_TEXT_FIELD_BYTES = 15 * 1024 * 1024; // 15MB — texto colado diretamente (o padrão do multer é 1MB, insuficiente para materiais longos)
+// O corpo de uma Vercel Function é limitado a 4,5MB. Estes limites deixam
+// margem para o multipart e preservam o mesmo comportamento local e publicado.
+const MAX_FILE_SIZE_BYTES = 4 * 1024 * 1024;
+const MAX_TEXT_FIELD_BYTES = 3 * 1024 * 1024;
 
 const ACCEPTED_MIME_TYPES = new Set([
   "application/pdf",
