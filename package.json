@@ -8,7 +8,7 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
-    "lint": "tsc --noEmit"
+    "lint": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.vercel.json"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
