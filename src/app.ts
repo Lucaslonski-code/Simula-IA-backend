@@ -30,4 +30,4 @@ app.use((err: unknown, _req: express.Request, res: express.Response, next: expre
   next(err);
 });
 
-export { app };
+export default app ;

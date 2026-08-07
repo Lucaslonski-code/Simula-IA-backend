@@ -1,4 +1,4 @@
-import { app } from "../src/app";
+import app from "../src/app";
 
 // Entry point da Vercel Function. O Express é exportado sem chamar listen(),
 // pois o runtime da Vercel gerencia o servidor HTTP.
